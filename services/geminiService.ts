@@ -1,27 +1,16 @@
 import { GoogleGenAI } from "@google/genai";
 
-// 安全获取 API Key
-const getApiKey = () => {
-  if (typeof import.meta !== 'undefined' && import.meta.env) {
-    return import.meta.env.VITE_GOOGLE_API_KEY || import.meta.env.VITE_API_KEY || '';
-  }
-  try {
-    // @ts-ignore
-    if (typeof process !== 'undefined' && process.env) {
-      // @ts-ignore
-      return process.env.VITE_GOOGLE_API_KEY || process.env.API_KEY || '';
-    }
-  } catch (e) {}
-  return '';
-};
+// 在 Vite 前端项目中，我们使用 import.meta.env.VITE_GOOGLE_API_KEY
+// 而不是 process.env.API_KEY (后者通常用于 Node.js 后端)
+const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || '';
 
-const apiKey = getApiKey();
-const ai = new GoogleGenAI({ apiKey });
+// 只有当 apiKey 存在时才初始化
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const getHikingRecommendation = async (userQuery: string, location: string = 'Hong Kong') => {
-  if (!apiKey) {
-    console.warn("Missing Gemini API Key. Please set VITE_GOOGLE_API_KEY in your .env file.");
-    return "AI features require an API Key. Please configure your environment variables.";
+  if (!ai) {
+    console.warn("Gemini API Key missing");
+    return "AI features are currently unavailable. Please check your API key configuration.";
   }
 
   try {
@@ -48,6 +37,6 @@ export const getHikingRecommendation = async (userQuery: string, location: strin
     return response.text || "Sorry, I couldn't find a trail for you right now.";
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return "I'm having trouble connecting to the hiking database (AI) right now.";
+    return "I'm having trouble connecting to the hiking database (AI) right now. Please check your connection.";
   }
 };
