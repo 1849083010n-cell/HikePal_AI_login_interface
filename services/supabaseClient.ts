@@ -3,21 +3,29 @@ import { createClient } from '@supabase/supabase-js';
 // ------------------------------------------------------------------
 // 安全配置说明：
 // ------------------------------------------------------------------
-// 为了安全起见，不要将 API Key 直接写在代码里上传到 GitHub。
-// 请在项目根目录创建一个名为 .env 的文件（Git 会忽略它），并填入以下内容：
-// 
+// 本地开发时，请确保您的 .env 文件包含以下键，并且以 VITE_ 开头：
 // VITE_SUPABASE_URL=https://your-project.supabase.co
 // VITE_SUPABASE_KEY=your-anon-key
 // ------------------------------------------------------------------
 
-// 尝试获取环境变量 (支持 Vite, Create React App 或标准 Node 环境)
 const getEnvVar = (key: string) => {
-  // @ts-ignore
+  // 优先使用 Vite 的 import.meta.env (浏览器标准)
   if (typeof import.meta !== 'undefined' && import.meta.env) {
-    // @ts-ignore
     return import.meta.env[`VITE_${key}`] || import.meta.env[key];
   }
-  return process.env[`VITE_${key}`] || process.env[`REACT_APP_${key}`] || process.env[key];
+  
+  // 安全地检查 process.env (防止在浏览器中报错 'process is not defined')
+  try {
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process.env) {
+      // @ts-ignore
+      return process.env[`VITE_${key}`] || process.env[key];
+    }
+  } catch (e) {
+    // 忽略错误
+  }
+  
+  return '';
 };
 
 const supabaseUrl = getEnvVar('SUPABASE_URL') || '';
@@ -30,19 +38,13 @@ const isKeyValid = supabaseKey && supabaseKey.length > 0;
 export const isSupabaseConfigured = isUrlValid && isKeyValid;
 
 // 防止因 URL 无效导致 createClient 崩溃
-// 如果本地 .env 没有配置，我们使用占位符，但 AuthPage 会检测 isSupabaseConfigured 并使用 Mock 模式
 const clientUrl = isUrlValid ? supabaseUrl : 'https://placeholder.supabase.co';
 const clientKey = isKeyValid ? supabaseKey : 'placeholder-key';
 
-// 初始化 Supabase 客户端
 export const supabase = createClient(clientUrl, clientKey);
 
-// 用于演示的模拟登录功能（当未连接数据库时使用）
 export const mockLogin = async (emailOrPhone: string): Promise<{ user: any; error: any }> => {
-  // 模拟网络延迟
   await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // 模拟成功返回
   return {
     user: {
       id: 'mock-user-id-123',
