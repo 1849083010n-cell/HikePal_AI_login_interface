@@ -24,18 +24,26 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
   const [showOtpInput, setShowOtpInput] = useState(false);
 
   // 辅助函数：创建或更新 Profile
-  const upsertProfile = async (userId: string, username: string, avatarUrl: string = '') => {
-    // 根据您的 Schema: id, username, role, avatar_url
-    const { error } = await supabase.from('profiles').upsert({
+  const upsertProfile = async (userId: string, emailOrPhone: string, name: string) => {
+    console.log("Attempting to save profile for:", userId);
+    
+    const profileData = {
       id: userId,
-      username: username,
-      role: 'hiker', // 默认为 hiker
-      avatar_url: avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${username}`,
-    }, { onConflict: 'id' });
+      full_name: name, // 确保这个字段被写入
+      username: name || `User_${userId.slice(0,4)}`,
+      role: 'hiker', 
+      avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${name}`,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from('profiles').upsert(profileData, { onConflict: 'id' });
 
     if (error) {
-      console.error("Error updating profile:", error);
-      // 不抛出错误，以免阻塞登录流程，但会在控制台记录
+      console.error("❌ Error updating profile table:", error);
+      // 即便 Profile 写入失败，如果 Auth 成功了，我们也不要在 UI 上阻断用户
+      // 但我们需要在控制台看到这个错误
+    } else {
+      console.log("✅ Profile saved successfully to database.");
     }
   };
 
@@ -56,8 +64,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
       // DEMO MODE CHECK
       if (!isSupabaseConfigured) {
         console.warn("Supabase not configured. Using Mock Login.");
-        
-        // 模拟延迟
         await new Promise(r => setTimeout(r, 800)); 
         
         if (method === AuthMethod.PHONE && !showOtpInput && mode !== AuthMode.FORGOT_PASSWORD) {
@@ -76,11 +82,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
       // 1. Email Login / Register
       if (method === AuthMethod.EMAIL) {
         if (mode === AuthMode.REGISTER) {
-          // 注册: 明确传递 metadata
+          // 注册
+          console.log("Starting registration for:", email);
+          
           const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: { 
+              // 这些数据会存到 auth.users 表的 raw_user_meta_data 列
               data: { 
                 full_name: fullName,
                 username: fullName,
@@ -91,17 +100,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
           if (error) throw error;
           
           if (data.user) {
-            // 如果开启了邮箱验证，Supabase 可能不会立即创建 Session
+            // 如果开启了邮箱验证且未验证，session 可能为空
             if (!data.session) {
                alert("Registration successful! Please check your email to confirm your account.");
-               // 某些设置下，用户已创建但未验证，我们可能想让用户留在登录页
                setMode(AuthMode.LOGIN);
                setLoading(false);
                return; 
             }
 
-            // 如果 Session 存在，尝试写入 profiles 表
-            await upsertProfile(data.user.id, fullName || email.split('@')[0]);
+            // 手动写入 profiles 表作为双重保险
+            await upsertProfile(data.user.id, email, fullName);
             
             onLoginSuccess({ 
               id: data.user.id, 
@@ -116,6 +124,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
           if (error) throw error;
           
           if (data.user) {
+             console.log("Login successful, fetching profile...");
              onLoginSuccess({ id: data.user.id, email: data.user.email });
           }
         } else if (mode === AuthMode.FORGOT_PASSWORD) {
@@ -132,12 +141,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         const formattedPhone = `+852${phone}`;
         
         if (!showOtpInput) {
-            // Step 1: Send OTP
             const { error } = await supabase.auth.signInWithOtp({ phone: formattedPhone });
             if (error) throw error;
             setShowOtpInput(true);
         } else {
-            // Step 2: Verify OTP
             const { data, error } = await supabase.auth.verifyOtp({
                 phone: formattedPhone,
                 token: otp,
@@ -147,13 +154,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
             
             if (data.user) {
               const defaultName = `Hiker ${phone.slice(-4)}`;
-              // 检查 profile 是否存在，不存在则创建
-              const { data: profile } = await supabase.from('profiles').select('id').eq('id', data.user.id).single();
-              
-              if (!profile) {
-                 await upsertProfile(data.user.id, defaultName);
-              }
-
+              await upsertProfile(data.user.id, formattedPhone, defaultName);
               onLoginSuccess({ id: data.user.id, phone: phone });
             }
         }
