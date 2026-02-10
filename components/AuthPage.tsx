@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { supabase, isSupabaseConfigured, mockLogin } from '../services/supabaseClient';
+import { supabase, isSupabaseConfigured, mockLogin, saveSupabaseConfig } from '../services/supabaseClient';
 import { AuthMode, AuthMethod, User } from '../types';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { Mail, Phone, Lock, User as UserIcon, ArrowRight, Mountain, AlertCircle, Database, WifiOff } from 'lucide-react';
+import { Mail, Phone, Lock, User as UserIcon, ArrowRight, Mountain, AlertCircle, Database, WifiOff, Settings, X, Check } from 'lucide-react';
 
 interface AuthPageProps {
   onLoginSuccess: (user: User) => void;
@@ -22,6 +22,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
   const [fullName, setFullName] = useState('');
   const [otp, setOtp] = useState('');
   const [showOtpInput, setShowOtpInput] = useState(false);
+
+  // Manual Config Modal State
+  const [showConfig, setShowConfig] = useState(false);
+  const [configUrl, setConfigUrl] = useState('');
+  const [configKey, setConfigKey] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,6 +154,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
     setShowOtpInput(false);
   };
 
+  const handleSaveConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (configUrl && configKey) {
+      saveSupabaseConfig(configUrl, configKey);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-stone-900 p-4 relative overflow-hidden">
       {/* Background Image with Overlay */}
@@ -165,12 +177,21 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         
         {/* Connection Status Banner */}
         {!isSupabaseConfigured ? (
-           <div className="bg-yellow-500/90 backdrop-blur-md text-white p-3 rounded-xl shadow-lg flex items-center gap-3 border border-yellow-400/50 animate-in slide-in-from-top-4">
-             <WifiOff className="h-5 w-5 shrink-0" />
-             <div className="text-sm">
-               <p className="font-bold">Demo Mode Active</p>
-               <p className="opacity-90 text-xs">Supabase not configured. Data won't be saved.</p>
+           <div className="bg-yellow-500/90 backdrop-blur-md text-white p-3 rounded-xl shadow-lg flex items-center justify-between gap-3 border border-yellow-400/50 animate-in slide-in-from-top-4">
+             <div className="flex items-center gap-3">
+               <WifiOff className="h-5 w-5 shrink-0" />
+               <div className="text-sm">
+                 <p className="font-bold">Demo Mode Active</p>
+                 <p className="opacity-90 text-xs">Supabase not configured.</p>
+               </div>
              </div>
+             <button 
+               onClick={() => setShowConfig(true)}
+               className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold py-1.5 px-3 rounded-lg transition-colors flex items-center gap-1"
+             >
+               <Settings className="h-3 w-3" />
+               Connect
+             </button>
            </div>
         ) : (
            <div className="bg-emerald-500/80 backdrop-blur-md text-white p-2 px-4 rounded-full shadow-lg self-center flex items-center gap-2 text-xs font-medium border border-emerald-400/30 animate-in fade-in">
@@ -384,6 +405,50 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
           </div>
         </div>
       </div>
+      
+      {/* Config Modal */}
+      {showConfig && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2">
+                <Settings className="h-5 w-5 text-stone-600" />
+                Setup Connection
+              </h3>
+              <button onClick={() => setShowConfig(false)} className="text-stone-400 hover:text-stone-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <p className="text-sm text-stone-600 mb-4 bg-blue-50 p-3 rounded-lg text-blue-800">
+              Enter your Supabase Project URL and Anon Key found in your project settings.
+            </p>
+
+            <form onSubmit={handleSaveConfig} className="space-y-4">
+              <Input 
+                label="Project URL" 
+                placeholder="https://xyz.supabase.co" 
+                value={configUrl}
+                onChange={e => setConfigUrl(e.target.value)}
+              />
+              <Input 
+                label="API Key (Anon/Public)" 
+                placeholder="eyJhbG..." 
+                type="password"
+                value={configKey}
+                onChange={e => setConfigKey(e.target.value)}
+              />
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="outline" fullWidth onClick={() => setShowConfig(false)}>Cancel</Button>
+                <Button type="submit" fullWidth>
+                   <Check className="h-4 w-4 mr-2" />
+                   Save & Reload
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Footer Branding */}
       <div className="absolute bottom-6 left-0 w-full text-center z-10">

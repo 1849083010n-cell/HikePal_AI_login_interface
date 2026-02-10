@@ -15,9 +15,5 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './'), 
     },
-  },
-  // 防止有些库使用 process.env 时报错
-  define: {
-    'process.env': {}
   }
 })

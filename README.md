@@ -16,13 +16,20 @@ This project uses Supabase for authentication and database.
 
 ### 2. Environment Variables (环境变量)
 
-Create a `.env` file in the root directory (copy `.env.example` if it exists, or create new):
+To connect to your database and AI services, you need to set up your local environment variables.
+
+1.  Find the file named `.env.example` in the project root.
+2.  Copy it and rename the copy to `.env` (or create a new `.env` file).
+3.  Fill in your keys in the `.env` file:
 
 ```env
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_KEY=your_supabase_anon_key
-VITE_GOOGLE_API_KEY=your_gemini_api_key
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_KEY=your-anon-public-key
+VITE_GOOGLE_API_KEY=your-gemini-api-key
 ```
+
+*   **Supabase Keys**: Found in Project Settings -> API.
+*   **Gemini Key**: Get it from Google AI Studio.
 
 ### 3. Install & Run
 
