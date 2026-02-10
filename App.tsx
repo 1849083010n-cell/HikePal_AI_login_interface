@@ -37,7 +37,7 @@ const App: React.FC = () => {
       console.error('Unexpected error fetching profile:', err);
     }
     
-    // 如果 profiles 表里没有数据（比如刚注册还没写入），返回基础信息
+    // 如果 profiles 表里没有数据，返回基础信息
     return {
       id: userId,
       email: email,
@@ -48,37 +48,44 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const initSession = async () => {
-      // If Supabase is configured, check for an existing session
-      if (isSupabaseConfigured) {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session?.user) {
-          const userData = await fetchProfile(
-            session.user.id, 
-            session.user.email, 
-            session.user.phone
-          );
-          setUser(userData);
-        }
-        setLoading(false);
-
-        // 监听 Auth 状态变化
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      try {
+        // If Supabase is configured, check for an existing session
+        if (isSupabaseConfigured) {
+          const { data: { session }, error } = await supabase.auth.getSession();
+          if (error) throw error;
+          
           if (session?.user) {
-             const userData = await fetchProfile(
+            const userData = await fetchProfile(
               session.user.id, 
               session.user.email, 
               session.user.phone
             );
             setUser(userData);
-          } else {
-            setUser(null);
           }
-        });
 
-        return () => subscription.unsubscribe();
-      } else {
-        // If mock mode, just stop loading
+          // 监听 Auth 状态变化
+          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+            if (session?.user) {
+               const userData = await fetchProfile(
+                session.user.id, 
+                session.user.email, 
+                session.user.phone
+              );
+              setUser(userData);
+            } else {
+              setUser(null);
+            }
+          });
+
+          // Cleanup subscription on unmount
+          return () => {
+            subscription.unsubscribe();
+          };
+        }
+      } catch (error) {
+        console.error("Session initialization error:", error);
+      } finally {
+        // 关键修复：无论是否出错，都要结束加载状态
         setLoading(false);
       }
     };
