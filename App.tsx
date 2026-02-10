@@ -11,6 +11,10 @@ const App: React.FC = () => {
 
   // 辅助函数：从 profiles 表获取用户详情
   const fetchProfile = async (userId: string, email?: string, phone?: string) => {
+    if (!isSupabaseConfigured) {
+      return { id: userId, email, phone, full_name: 'HikePal User' };
+    }
+
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -28,7 +32,7 @@ const App: React.FC = () => {
           email: email,
           phone: phone,
           username: data.username,
-          full_name: data.username, // 界面显示用
+          full_name: data.full_name || data.username, // 界面显示优先使用 full_name
           avatar_url: data.avatar_url,
           role: data.role
         };
@@ -52,7 +56,6 @@ const App: React.FC = () => {
         // If Supabase is configured, check for an existing session
         if (isSupabaseConfigured) {
           const { data: { session }, error } = await supabase.auth.getSession();
-          if (error) throw error;
           
           if (session?.user) {
             const userData = await fetchProfile(
@@ -64,16 +67,24 @@ const App: React.FC = () => {
           }
 
           // 监听 Auth 状态变化
-          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            if (session?.user) {
+          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+             if (event === 'SIGNED_OUT') {
+                setUser(null);
+                return;
+             }
+             
+             if (session?.user) {
+               // 稍微延迟一下，等待 Trigger 完成写入 (如果刚注册)
+               if (event === 'SIGNED_IN') {
+                 await new Promise(r => setTimeout(r, 500));
+               }
+               
                const userData = await fetchProfile(
                 session.user.id, 
                 session.user.email, 
                 session.user.phone
               );
               setUser(userData);
-            } else {
-              setUser(null);
             }
           });
 
@@ -85,7 +96,6 @@ const App: React.FC = () => {
       } catch (error) {
         console.error("Session initialization error:", error);
       } finally {
-        // 关键修复：无论是否出错，都要结束加载状态
         setLoading(false);
       }
     };
@@ -94,6 +104,7 @@ const App: React.FC = () => {
   }, []);
 
   const handleLoginSuccess = (userData: User) => {
+    // 立即更新状态，不需要等待网络请求，提升体验
     setUser(userData);
   };
 

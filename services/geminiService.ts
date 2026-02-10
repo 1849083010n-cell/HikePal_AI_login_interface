@@ -1,8 +1,20 @@
 import { GoogleGenAI } from "@google/genai";
 
+// Helper to safely access env vars
+const getEnvVar = (key: string) => {
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      return import.meta.env[key] || '';
+    }
+  } catch (e) {
+    console.warn('Error reading env var:', key);
+  }
+  return '';
+};
+
 // 在 Vite 前端项目中，我们使用 import.meta.env.VITE_GOOGLE_API_KEY
 // 而不是 process.env.API_KEY (后者通常用于 Node.js 后端)
-const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || '';
+const apiKey = getEnvVar('VITE_GOOGLE_API_KEY');
 
 // 只有当 apiKey 存在时才初始化
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;

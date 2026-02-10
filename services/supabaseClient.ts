@@ -7,9 +7,22 @@ import { createClient } from '@supabase/supabase-js';
 // VITE_SUPABASE_KEY=你的Key
 // ------------------------------------------------------------------
 
-// 在 Vite 中，我们直接使用 import.meta.env
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || '';
+// Safely access environment variables to avoid "undefined is not an object" error
+const getEnvVar = (key: string) => {
+  try {
+    // Check if import.meta and import.meta.env exist before accessing
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      return import.meta.env[key] || '';
+    }
+  } catch (e) {
+    console.warn('Error reading env var:', key);
+  }
+  return '';
+};
+
+// 在 Vite 中，我们直接使用 import.meta.env，但通过 helper 安全获取
+const supabaseUrl = getEnvVar('VITE_SUPABASE_URL');
+const supabaseKey = getEnvVar('VITE_SUPABASE_KEY');
 
 const isUrlValid = supabaseUrl && supabaseUrl.startsWith('http');
 const isKeyValid = supabaseKey && supabaseKey.length > 0;
@@ -21,8 +34,12 @@ if (isSupabaseConfigured) {
   console.log("✅ Supabase is configured and connected.");
 } else {
   console.warn("⚠️ Supabase is NOT configured. App is running in Demo Mode. Data will not be saved.");
-  console.log("Current URL:", supabaseUrl);
-  console.log("Current Key length:", supabaseKey.length);
+  if (typeof import.meta !== 'undefined' && !import.meta.env) {
+     console.warn("NOTE: import.meta.env is undefined. Ensure you are running with Vite (npm run dev).");
+  } else {
+     console.log("Current URL:", supabaseUrl);
+     console.log("Current Key length:", supabaseKey.length);
+  }
 }
 
 const clientUrl = isUrlValid ? supabaseUrl : 'https://placeholder.supabase.co';

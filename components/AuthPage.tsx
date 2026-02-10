@@ -23,30 +23,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
   const [otp, setOtp] = useState('');
   const [showOtpInput, setShowOtpInput] = useState(false);
 
-  // 辅助函数：创建或更新 Profile
-  const upsertProfile = async (userId: string, emailOrPhone: string, name: string) => {
-    console.log("Attempting to save profile for:", userId);
-    
-    const profileData = {
-      id: userId,
-      full_name: name, // 确保这个字段被写入
-      username: name || `User_${userId.slice(0,4)}`,
-      role: 'hiker', 
-      avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${name}`,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { error } = await supabase.from('profiles').upsert(profileData, { onConflict: 'id' });
-
-    if (error) {
-      console.error("❌ Error updating profile table:", error);
-      // 即便 Profile 写入失败，如果 Auth 成功了，我们也不要在 UI 上阻断用户
-      // 但我们需要在控制台看到这个错误
-    } else {
-      console.log("✅ Profile saved successfully to database.");
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -85,14 +61,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
           // 注册
           console.log("Starting registration for:", email);
           
+          // 这里的 options.data 非常重要，它会被 SQL Trigger 读取并写入 profiles 表
           const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: { 
-              // 这些数据会存到 auth.users 表的 raw_user_meta_data 列
               data: { 
                 full_name: fullName,
                 username: fullName,
+                avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${fullName}`,
               } 
             }
           });
@@ -107,15 +84,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
                setLoading(false);
                return; 
             }
-
-            // 手动写入 profiles 表作为双重保险
-            await upsertProfile(data.user.id, email, fullName);
             
+            // 登录成功，直接进入
             onLoginSuccess({ 
               id: data.user.id, 
               email: data.user.email, 
               username: fullName,
-              full_name: fullName 
+              full_name: fullName,
+              role: 'hiker'
             });
           }
         } else if (mode === AuthMode.LOGIN) {
@@ -124,7 +100,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
           if (error) throw error;
           
           if (data.user) {
-             console.log("Login successful, fetching profile...");
+             console.log("Login successful");
+             // 我们只需要传递基本信息，App.tsx 会负责获取完整 Profile
              onLoginSuccess({ id: data.user.id, email: data.user.email });
           }
         } else if (mode === AuthMode.FORGOT_PASSWORD) {
@@ -153,8 +130,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
             if (error) throw error;
             
             if (data.user) {
-              const defaultName = `Hiker ${phone.slice(-4)}`;
-              await upsertProfile(data.user.id, formattedPhone, defaultName);
               onLoginSuccess({ id: data.user.id, phone: phone });
             }
         }

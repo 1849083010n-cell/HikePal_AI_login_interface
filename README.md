@@ -1,20 +1,41 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# HikePal Hong Kong
 
-# Run and deploy your AI Studio app
+A comprehensive hiking companion app featuring route planning, AI-powered guidance, and social hiking features.
 
-This contains everything you need to run your app locally.
+## 🚀 Setup Instructions (如何启动)
 
-View your app in AI Studio: https://ai.studio/apps/drive/1V9NSZJWTTsEVIH6NZhMg8uKFdN-p95BI
+### 1. Supabase Setup (数据库设置)
 
-## Run Locally
+This project uses Supabase for authentication and database.
 
-**Prerequisites:**  Node.js
+1.  Create a project at [Supabase](https://supabase.com).
+2.  Go to the **SQL Editor** in your Supabase dashboard.
+3.  Copy the content from `db_schema.sql` in this project.
+4.  Paste it into the SQL Editor and click **Run**.
+    *   *Note: This creates the `profiles` table and sets up the automation to handle new user signups.*
 
+### 2. Environment Variables (环境变量)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Create a `.env` file in the root directory (copy `.env.example` if it exists, or create new):
+
+```env
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_KEY=your_supabase_anon_key
+VITE_GOOGLE_API_KEY=your_gemini_api_key
+```
+
+### 3. Install & Run
+
+```bash
+npm install
+npm run dev
+```
+
+## 🛠️ Tech Stack
+
+*   React 19
+*   TypeScript
+*   Vite
+*   Supabase (Auth & Database)
+*   Google Gemini API (AI Features)
+*   Tailwind CSS
