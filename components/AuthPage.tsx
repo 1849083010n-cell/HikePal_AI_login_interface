@@ -23,6 +23,21 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
   const [otp, setOtp] = useState('');
   const [showOtpInput, setShowOtpInput] = useState(false);
 
+  // 辅助函数：创建或更新 Profile
+  const upsertProfile = async (userId: string, username: string, avatarUrl: string = '') => {
+    // 根据您的 Schema: id, username, role, avatar_url
+    const { error } = await supabase.from('profiles').upsert({
+      id: userId,
+      username: username,
+      role: 'hiker', // 默认为 hiker
+      avatar_url: avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${username}`,
+    }, { onConflict: 'id' });
+
+    if (error) {
+      console.error("Error updating profile:", error);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -38,13 +53,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
       if (mode !== AuthMode.FORGOT_PASSWORD && !password && method === AuthMethod.EMAIL) throw new Error("Password is required");
 
       // DEMO MODE CHECK
-      // If Supabase credentials aren't set in env, we use the mock login to demonstrate the UI flow.
       if (!isSupabaseConfigured) {
         console.warn("Supabase not configured. Using Mock Login.");
         
-        // Simulate OTP step for phone
         if (method === AuthMethod.PHONE && !showOtpInput && mode !== AuthMode.FORGOT_PASSWORD) {
-          await new Promise(r => setTimeout(r, 800)); // Fake network delay
+          await new Promise(r => setTimeout(r, 800)); 
           setShowOtpInput(true);
           setLoading(false);
           return;
@@ -52,7 +65,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
 
         const { user, error: mockError } = await mockLogin(method === AuthMethod.EMAIL ? email : phone);
         if (mockError) throw new Error(mockError);
-        if (user) onLoginSuccess({ ...user, full_name: fullName || user.full_name });
+        if (user) onLoginSuccess({ ...user, username: fullName || user.full_name, full_name: fullName || user.full_name });
         return;
       }
 
@@ -60,20 +73,44 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
       // 1. Email Login / Register
       if (method === AuthMethod.EMAIL) {
         if (mode === AuthMode.REGISTER) {
+          // 注册
           const { data, error } = await supabase.auth.signUp({
             email,
             password,
-            options: { data: { full_name: fullName } }
+            options: { data: { full_name: fullName } } // 可选：也存入 auth metadata
           });
           if (error) throw error;
-          if (data.user) onLoginSuccess({ id: data.user.id, email: data.user.email, full_name: fullName });
+          
+          if (data.user) {
+            // 关键步骤：写入 profiles 表
+            await upsertProfile(data.user.id, fullName || email.split('@')[0]);
+            
+            onLoginSuccess({ 
+              id: data.user.id, 
+              email: data.user.email, 
+              username: fullName,
+              full_name: fullName 
+            });
+          }
         } else if (mode === AuthMode.LOGIN) {
+          // 登录
           const { data, error } = await supabase.auth.signInWithPassword({ email, password });
           if (error) throw error;
-          if (data.user) onLoginSuccess({ id: data.user.id, email: data.user.email });
+          
+          if (data.user) {
+             // 登录成功后，App.tsx 会自动获取 profile，这里传递基本信息即可
+             onLoginSuccess({ id: data.user.id, email: data.user.email });
+          }
+        } else if (mode === AuthMode.FORGOT_PASSWORD) {
+          const { error } = await supabase.auth.resetPasswordForEmail(email, {
+             redirectTo: window.location.origin,
+          });
+          if (error) throw error;
+          alert("Password reset link sent to your email!");
+          setMode(AuthMode.LOGIN);
         }
       } 
-      // 2. Phone Login (Note: Requires Supabase Phone Auth setup with SMS provider)
+      // 2. Phone Login (香港号码)
       else if (method === AuthMethod.PHONE) {
         const formattedPhone = `+852${phone}`;
         
@@ -90,7 +127,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
                 type: 'sms'
             });
             if (error) throw error;
-            if (data.user) onLoginSuccess({ id: data.user.id, phone: phone });
+            
+            if (data.user) {
+              // 手机登录通常也是注册入口，所以尝试写入 Profile
+              // 如果用户之前没填名字，这里用手机号后4位做默认名字
+              const defaultName = `Hiker ${phone.slice(-4)}`;
+              // 使用 upsert，如果已存在则不会覆盖重要信息，除非我们想更新
+              // 注意：这里我们只在第一次创建时写入默认名，如果已存在则不做操作更好？
+              // 为了简单起见，我们调用 upsert，但实际生产中可能先 check 是否存在
+              
+              // 检查 profile 是否存在
+              const { data: profile } = await supabase.from('profiles').select('id').eq('id', data.user.id).single();
+              
+              if (!profile) {
+                 await upsertProfile(data.user.id, defaultName);
+              }
+
+              onLoginSuccess({ id: data.user.id, phone: phone });
+            }
         }
       }
 
@@ -125,7 +179,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         {/* Header Section */}
         <div className="bg-emerald-600 px-8 py-8 text-center relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-             {/* Abstract topo lines pattern could go here */}
              <svg width="100%" height="100%">
                <pattern id="pattern-circles" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse" patternContentUnits="userSpaceOnUse">
                  <circle id="pattern-circle" cx="10" cy="10" r="1.6257413380501518" fill="#fff"></circle>
@@ -193,7 +246,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
             {/* Name Field (Register only) */}
             {mode === AuthMode.REGISTER && (
               <Input
-                label="Full Name"
+                label="Username / Full Name"
                 placeholder="e.g. John Doe"
                 icon={<UserIcon className="h-5 w-5" />}
                 value={fullName}

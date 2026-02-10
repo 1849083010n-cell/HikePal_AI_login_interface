@@ -2,8 +2,10 @@ export interface User {
   id: string;
   email?: string;
   phone?: string;
-  full_name?: string;
-  avatar_url?: string;
+  username?: string; // 对应 profiles 表的 username
+  full_name?: string; // 保留用于兼容显示
+  avatar_url?: string; // 对应 profiles 表的 avatar_url
+  role?: string; // 对应 profiles 表的 role (e.g., 'hiker')
 }
 
 export enum AuthMode {

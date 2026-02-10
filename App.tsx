@@ -9,42 +9,81 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 辅助函数：从 profiles 表获取用户详情
+  const fetchProfile = async (userId: string, email?: string, phone?: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching profile:', error);
+      }
+
+      if (data) {
+        return {
+          id: userId,
+          email: email,
+          phone: phone,
+          username: data.username,
+          full_name: data.username, // 界面显示用
+          avatar_url: data.avatar_url,
+          role: data.role
+        };
+      }
+    } catch (err) {
+      console.error('Unexpected error fetching profile:', err);
+    }
+    
+    // 如果 profiles 表里没有数据（比如刚注册还没写入），返回基础信息
+    return {
+      id: userId,
+      email: email,
+      phone: phone,
+      full_name: email?.split('@')[0] || phone || 'Hiker'
+    };
+  };
+
   useEffect(() => {
-    // If Supabase is configured, check for an existing session
-    if (isSupabaseConfigured) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
+    const initSession = async () => {
+      // If Supabase is configured, check for an existing session
+      if (isSupabaseConfigured) {
+        const { data: { session } } = await supabase.auth.getSession();
+        
         if (session?.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email,
-            phone: session.user.phone,
-            // Assuming metadata exists or defaults
-            full_name: session.user.user_metadata?.full_name,
-          });
+          const userData = await fetchProfile(
+            session.user.id, 
+            session.user.email, 
+            session.user.phone
+          );
+          setUser(userData);
         }
         setLoading(false);
-      });
 
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange((_event, session) => {
-        if (session?.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email,
-            phone: session.user.phone,
-            full_name: session.user.user_metadata?.full_name,
-          });
-        } else {
-          setUser(null);
-        }
-      });
+        // 监听 Auth 状态变化
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+          if (session?.user) {
+             const userData = await fetchProfile(
+              session.user.id, 
+              session.user.email, 
+              session.user.phone
+            );
+            setUser(userData);
+          } else {
+            setUser(null);
+          }
+        });
 
-      return () => subscription.unsubscribe();
-    } else {
-      // If mock mode, just stop loading
-      setLoading(false);
-    }
+        return () => subscription.unsubscribe();
+      } else {
+        // If mock mode, just stop loading
+        setLoading(false);
+      }
+    };
+
+    initSession();
   }, []);
 
   const handleLoginSuccess = (userData: User) => {
