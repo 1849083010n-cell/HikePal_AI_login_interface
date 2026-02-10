@@ -8,7 +8,6 @@ import { createClient } from '@supabase/supabase-js';
 // ------------------------------------------------------------------
 
 // 在 Vite 中，我们直接使用 import.meta.env
-// 如果这些变量没定义，Vite 会返回 undefined，我们给个空字符串作为后备
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || '';
 
@@ -17,12 +16,22 @@ const isKeyValid = supabaseKey && supabaseKey.length > 0;
 
 export const isSupabaseConfigured = isUrlValid && isKeyValid;
 
+// Debug log to help user
+if (isSupabaseConfigured) {
+  console.log("✅ Supabase is configured and connected.");
+} else {
+  console.warn("⚠️ Supabase is NOT configured. App is running in Demo Mode. Data will not be saved.");
+  console.log("Current URL:", supabaseUrl);
+  console.log("Current Key length:", supabaseKey.length);
+}
+
 const clientUrl = isUrlValid ? supabaseUrl : 'https://placeholder.supabase.co';
 const clientKey = isKeyValid ? supabaseKey : 'placeholder-key';
 
 export const supabase = createClient(clientUrl, clientKey);
 
 export const mockLogin = async (emailOrPhone: string): Promise<{ user: any; error: any }> => {
+  console.log("Mock Login triggered for:", emailOrPhone);
   await new Promise(resolve => setTimeout(resolve, 1000));
   
   return {

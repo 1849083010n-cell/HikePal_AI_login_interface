@@ -3,7 +3,7 @@ import { supabase, isSupabaseConfigured, mockLogin } from '../services/supabaseC
 import { AuthMode, AuthMethod, User } from '../types';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { Mail, Phone, Lock, User as UserIcon, ArrowRight, Mountain, AlertCircle } from 'lucide-react';
+import { Mail, Phone, Lock, User as UserIcon, ArrowRight, Mountain, AlertCircle, Database, WifiOff } from 'lucide-react';
 
 interface AuthPageProps {
   onLoginSuccess: (user: User) => void;
@@ -35,6 +35,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
 
     if (error) {
       console.error("Error updating profile:", error);
+      // 不抛出错误，以免阻塞登录流程，但会在控制台记录
     }
   };
 
@@ -56,8 +57,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
       if (!isSupabaseConfigured) {
         console.warn("Supabase not configured. Using Mock Login.");
         
+        // 模拟延迟
+        await new Promise(r => setTimeout(r, 800)); 
+        
         if (method === AuthMethod.PHONE && !showOtpInput && mode !== AuthMode.FORGOT_PASSWORD) {
-          await new Promise(r => setTimeout(r, 800)); 
           setShowOtpInput(true);
           setLoading(false);
           return;
@@ -73,16 +76,31 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
       // 1. Email Login / Register
       if (method === AuthMethod.EMAIL) {
         if (mode === AuthMode.REGISTER) {
-          // 注册
+          // 注册: 明确传递 metadata
           const { data, error } = await supabase.auth.signUp({
             email,
             password,
-            options: { data: { full_name: fullName } } // 可选：也存入 auth metadata
+            options: { 
+              data: { 
+                full_name: fullName,
+                username: fullName,
+              } 
+            }
           });
+          
           if (error) throw error;
           
           if (data.user) {
-            // 关键步骤：写入 profiles 表
+            // 如果开启了邮箱验证，Supabase 可能不会立即创建 Session
+            if (!data.session) {
+               alert("Registration successful! Please check your email to confirm your account.");
+               // 某些设置下，用户已创建但未验证，我们可能想让用户留在登录页
+               setMode(AuthMode.LOGIN);
+               setLoading(false);
+               return; 
+            }
+
+            // 如果 Session 存在，尝试写入 profiles 表
             await upsertProfile(data.user.id, fullName || email.split('@')[0]);
             
             onLoginSuccess({ 
@@ -98,7 +116,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
           if (error) throw error;
           
           if (data.user) {
-             // 登录成功后，App.tsx 会自动获取 profile，这里传递基本信息即可
              onLoginSuccess({ id: data.user.id, email: data.user.email });
           }
         } else if (mode === AuthMode.FORGOT_PASSWORD) {
@@ -129,14 +146,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
             if (error) throw error;
             
             if (data.user) {
-              // 手机登录通常也是注册入口，所以尝试写入 Profile
-              // 如果用户之前没填名字，这里用手机号后4位做默认名字
               const defaultName = `Hiker ${phone.slice(-4)}`;
-              // 使用 upsert，如果已存在则不会覆盖重要信息，除非我们想更新
-              // 注意：这里我们只在第一次创建时写入默认名，如果已存在则不做操作更好？
-              // 为了简单起见，我们调用 upsert，但实际生产中可能先 check 是否存在
-              
-              // 检查 profile 是否存在
+              // 检查 profile 是否存在，不存在则创建
               const { data: profile } = await supabase.from('profiles').select('id').eq('id', data.user.id).single();
               
               if (!profile) {
@@ -149,6 +160,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
       }
 
     } catch (err: any) {
+      console.error("Auth Error:", err);
       setError(err.message || "An error occurred");
     } finally {
       setLoading(false);
@@ -173,207 +185,227 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-[2px]"></div>
       </div>
 
-      {/* Auth Card */}
-      <div className="relative z-10 w-full max-w-md bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-white/20">
+      <div className="relative z-10 flex flex-col w-full max-w-md gap-4">
         
-        {/* Header Section */}
-        <div className="bg-emerald-600 px-8 py-8 text-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-             <svg width="100%" height="100%">
-               <pattern id="pattern-circles" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse" patternContentUnits="userSpaceOnUse">
-                 <circle id="pattern-circle" cx="10" cy="10" r="1.6257413380501518" fill="#fff"></circle>
-               </pattern>
-               <rect id="rect" x="0" y="0" width="100%" height="100%" fill="url(#pattern-circles)"></rect>
-             </svg>
-          </div>
+        {/* Connection Status Banner */}
+        {!isSupabaseConfigured ? (
+           <div className="bg-yellow-500/90 backdrop-blur-md text-white p-3 rounded-xl shadow-lg flex items-center gap-3 border border-yellow-400/50 animate-in slide-in-from-top-4">
+             <WifiOff className="h-5 w-5 shrink-0" />
+             <div className="text-sm">
+               <p className="font-bold">Demo Mode Active</p>
+               <p className="opacity-90 text-xs">Supabase not configured. Data won't be saved.</p>
+             </div>
+           </div>
+        ) : (
+           <div className="bg-emerald-500/80 backdrop-blur-md text-white p-2 px-4 rounded-full shadow-lg self-center flex items-center gap-2 text-xs font-medium border border-emerald-400/30 animate-in fade-in">
+             <Database className="h-3 w-3" />
+             Connected to Supabase
+           </div>
+        )}
+
+        {/* Auth Card */}
+        <div className="w-full bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-white/20">
           
-          <div className="relative z-10 flex flex-col items-center">
-            <div className="bg-white/20 p-3 rounded-2xl mb-4 backdrop-blur-sm shadow-inner">
-              <Mountain className="h-8 w-8 text-white" />
+          {/* Header Section */}
+          <div className="bg-emerald-600 px-8 py-8 text-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+              <svg width="100%" height="100%">
+                <pattern id="pattern-circles" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse" patternContentUnits="userSpaceOnUse">
+                  <circle id="pattern-circle" cx="10" cy="10" r="1.6257413380501518" fill="#fff"></circle>
+                </pattern>
+                <rect id="rect" x="0" y="0" width="100%" height="100%" fill="url(#pattern-circles)"></rect>
+              </svg>
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Welcome to HikePal</h1>
-            <p className="text-emerald-100 text-sm mt-1">Your Ultimate Hong Kong Hiking Companion</p>
-          </div>
-        </div>
-
-        {/* Method Toggles */}
-        <div className="flex border-b border-stone-100">
-          <button
-            onClick={() => { setMethod(AuthMethod.EMAIL); setError(null); }}
-            className={`flex-1 py-4 text-sm font-medium transition-colors relative ${
-              method === AuthMethod.EMAIL ? 'text-emerald-600' : 'text-stone-400 hover:text-stone-600'
-            }`}
-          >
-            Email
-            {method === AuthMethod.EMAIL && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-600" />}
-          </button>
-          <button
-            onClick={() => { setMethod(AuthMethod.PHONE); setError(null); }}
-            className={`flex-1 py-4 text-sm font-medium transition-colors relative ${
-              method === AuthMethod.PHONE ? 'text-emerald-600' : 'text-stone-400 hover:text-stone-600'
-            }`}
-          >
-            Mobile (HK)
-            {method === AuthMethod.PHONE && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-600" />}
-          </button>
-        </div>
-
-        {/* Form Body */}
-        <div className="p-8">
-          <form onSubmit={handleSubmit} className="space-y-5">
             
-            {/* Mode Title */}
-            <div className="mb-6">
-              <h2 className="text-xl font-bold text-stone-800">
-                {mode === AuthMode.LOGIN ? 'Sign In' : mode === AuthMode.REGISTER ? 'Create Account' : 'Reset Password'}
-              </h2>
-              <p className="text-stone-500 text-sm">
-                {mode === AuthMode.LOGIN 
-                  ? 'Enter your details to continue your journey.' 
-                  : mode === AuthMode.REGISTER 
-                  ? 'Join the community of hikers today.'
-                  : 'Enter your email to receive a reset link.'}
-              </p>
-            </div>
-
-            {error && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-start gap-2">
-                <AlertCircle className="h-5 w-5 shrink-0" />
-                <span>{error}</span>
+            <div className="relative z-10 flex flex-col items-center">
+              <div className="bg-white/20 p-3 rounded-2xl mb-4 backdrop-blur-sm shadow-inner">
+                <Mountain className="h-8 w-8 text-white" />
               </div>
-            )}
-
-            {/* Name Field (Register only) */}
-            {mode === AuthMode.REGISTER && (
-              <Input
-                label="Username / Full Name"
-                placeholder="e.g. John Doe"
-                icon={<UserIcon className="h-5 w-5" />}
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-              />
-            )}
-
-            {/* Email Form */}
-            {method === AuthMethod.EMAIL && (
-              <>
-                <Input
-                  type="email"
-                  label="Email Address"
-                  placeholder="name@example.com"
-                  icon={<Mail className="h-5 w-5" />}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-                {mode !== AuthMode.FORGOT_PASSWORD && (
-                  <Input
-                    type="password"
-                    label="Password"
-                    placeholder="••••••••"
-                    icon={<Lock className="h-5 w-5" />}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                )}
-              </>
-            )}
-
-            {/* Phone Form */}
-            {method === AuthMethod.PHONE && (
-              <>
-                {!showOtpInput ? (
-                   <div className="space-y-1.5">
-                     <label className="block text-sm font-medium text-stone-700">Phone Number</label>
-                     <div className="relative flex">
-                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-500 bg-stone-50 border-r border-stone-200 rounded-l-lg pr-2 z-10">
-                         <span className="text-sm font-medium">🇭🇰 +852</span>
-                       </div>
-                       <input
-                         type="tel"
-                         maxLength={8}
-                         className="block w-full rounded-lg border border-stone-300 bg-white pl-24 pr-4 py-2.5 text-stone-900 focus:border-emerald-500 focus:ring-emerald-500 focus:ring-1 focus:outline-none transition-all"
-                         placeholder="1234 5678"
-                         value={phone}
-                         onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                       />
-                       <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                         <Phone className="h-5 w-5 text-stone-400" />
-                       </div>
-                     </div>
-                   </div>
-                ) : (
-                  <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                    <Input 
-                      label="Verification Code"
-                      placeholder="Enter 6-digit code"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value)}
-                      className="text-center tracking-widest text-lg font-mono"
-                      maxLength={6}
-                    />
-                    <button 
-                      type="button" 
-                      onClick={() => setShowOtpInput(false)}
-                      className="text-xs text-emerald-600 hover:text-emerald-700 mt-2 font-medium"
-                    >
-                      Change Phone Number
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Actions */}
-            <div className="pt-2">
-              <Button 
-                type="submit" 
-                fullWidth 
-                isLoading={loading}
-              >
-                {mode === AuthMode.LOGIN ? 'Log In' : mode === AuthMode.REGISTER ? 'Sign Up' : 'Send Reset Link'}
-                {!loading && <ArrowRight className="h-4 w-4 ml-2" />}
-              </Button>
+              <h1 className="text-2xl font-bold text-white tracking-tight">Welcome to HikePal</h1>
+              <p className="text-emerald-100 text-sm mt-1">Your Ultimate Hong Kong Hiking Companion</p>
             </div>
+          </div>
 
-            {/* Footer / Toggle */}
-            <div className="text-center text-sm">
-              {mode === AuthMode.LOGIN ? (
-                <p className="text-stone-500">
-                  Don't have an account?{' '}
-                  <button type="button" onClick={toggleMode} className="text-emerald-600 hover:text-emerald-700 font-semibold hover:underline">
-                    Sign up
-                  </button>
-                </p>
-              ) : (
-                <p className="text-stone-500">
-                  Already have an account?{' '}
-                  <button type="button" onClick={toggleMode} className="text-emerald-600 hover:text-emerald-700 font-semibold hover:underline">
-                    Log in
-                  </button>
-                </p>
-              )}
+          {/* Method Toggles */}
+          <div className="flex border-b border-stone-100">
+            <button
+              onClick={() => { setMethod(AuthMethod.EMAIL); setError(null); }}
+              className={`flex-1 py-4 text-sm font-medium transition-colors relative ${
+                method === AuthMethod.EMAIL ? 'text-emerald-600' : 'text-stone-400 hover:text-stone-600'
+              }`}
+            >
+              Email
+              {method === AuthMethod.EMAIL && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-600" />}
+            </button>
+            <button
+              onClick={() => { setMethod(AuthMethod.PHONE); setError(null); }}
+              className={`flex-1 py-4 text-sm font-medium transition-colors relative ${
+                method === AuthMethod.PHONE ? 'text-emerald-600' : 'text-stone-400 hover:text-stone-600'
+              }`}
+            >
+              Mobile (HK)
+              {method === AuthMethod.PHONE && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-600" />}
+            </button>
+          </div>
+
+          {/* Form Body */}
+          <div className="p-8">
+            <form onSubmit={handleSubmit} className="space-y-5">
               
-              {mode === AuthMode.LOGIN && method === AuthMethod.EMAIL && (
-                <button 
-                  type="button"
-                  onClick={() => setMode(AuthMode.FORGOT_PASSWORD)}
-                  className="mt-4 text-stone-400 hover:text-stone-600 text-xs"
-                >
-                  Forgot your password?
-                </button>
-              )}
-               {mode === AuthMode.FORGOT_PASSWORD && (
-                <button 
-                  type="button"
-                  onClick={() => setMode(AuthMode.LOGIN)}
-                  className="mt-4 text-stone-400 hover:text-stone-600 text-xs"
-                >
-                  Back to login
-                </button>
-              )}
-            </div>
+              {/* Mode Title */}
+              <div className="mb-6">
+                <h2 className="text-xl font-bold text-stone-800">
+                  {mode === AuthMode.LOGIN ? 'Sign In' : mode === AuthMode.REGISTER ? 'Create Account' : 'Reset Password'}
+                </h2>
+                <p className="text-stone-500 text-sm">
+                  {mode === AuthMode.LOGIN 
+                    ? 'Enter your details to continue your journey.' 
+                    : mode === AuthMode.REGISTER 
+                    ? 'Join the community of hikers today.'
+                    : 'Enter your email to receive a reset link.'}
+                </p>
+              </div>
 
-          </form>
+              {error && (
+                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-start gap-2">
+                  <AlertCircle className="h-5 w-5 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* Name Field (Register only) */}
+              {mode === AuthMode.REGISTER && (
+                <Input
+                  label="Username / Full Name"
+                  placeholder="e.g. John Doe"
+                  icon={<UserIcon className="h-5 w-5" />}
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                />
+              )}
+
+              {/* Email Form */}
+              {method === AuthMethod.EMAIL && (
+                <>
+                  <Input
+                    type="email"
+                    label="Email Address"
+                    placeholder="name@example.com"
+                    icon={<Mail className="h-5 w-5" />}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                  {mode !== AuthMode.FORGOT_PASSWORD && (
+                    <Input
+                      type="password"
+                      label="Password"
+                      placeholder="••••••••"
+                      icon={<Lock className="h-5 w-5" />}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                  )}
+                </>
+              )}
+
+              {/* Phone Form */}
+              {method === AuthMethod.PHONE && (
+                <>
+                  {!showOtpInput ? (
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-medium text-stone-700">Phone Number</label>
+                      <div className="relative flex">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-500 bg-stone-50 border-r border-stone-200 rounded-l-lg pr-2 z-10">
+                          <span className="text-sm font-medium">🇭🇰 +852</span>
+                        </div>
+                        <input
+                          type="tel"
+                          maxLength={8}
+                          className="block w-full rounded-lg border border-stone-300 bg-white pl-24 pr-4 py-2.5 text-stone-900 focus:border-emerald-500 focus:ring-emerald-500 focus:ring-1 focus:outline-none transition-all"
+                          placeholder="1234 5678"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                        />
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                          <Phone className="h-5 w-5 text-stone-400" />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                      <Input 
+                        label="Verification Code"
+                        placeholder="Enter 6-digit code"
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value)}
+                        className="text-center tracking-widest text-lg font-mono"
+                        maxLength={6}
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => setShowOtpInput(false)}
+                        className="text-xs text-emerald-600 hover:text-emerald-700 mt-2 font-medium"
+                      >
+                        Change Phone Number
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Actions */}
+              <div className="pt-2">
+                <Button 
+                  type="submit" 
+                  fullWidth 
+                  isLoading={loading}
+                >
+                  {mode === AuthMode.LOGIN ? 'Log In' : mode === AuthMode.REGISTER ? 'Sign Up' : 'Send Reset Link'}
+                  {!loading && <ArrowRight className="h-4 w-4 ml-2" />}
+                </Button>
+              </div>
+
+              {/* Footer / Toggle */}
+              <div className="text-center text-sm">
+                {mode === AuthMode.LOGIN ? (
+                  <p className="text-stone-500">
+                    Don't have an account?{' '}
+                    <button type="button" onClick={toggleMode} className="text-emerald-600 hover:text-emerald-700 font-semibold hover:underline">
+                      Sign up
+                    </button>
+                  </p>
+                ) : (
+                  <p className="text-stone-500">
+                    Already have an account?{' '}
+                    <button type="button" onClick={toggleMode} className="text-emerald-600 hover:text-emerald-700 font-semibold hover:underline">
+                      Log in
+                    </button>
+                  </p>
+                )}
+                
+                {mode === AuthMode.LOGIN && method === AuthMethod.EMAIL && (
+                  <button 
+                    type="button"
+                    onClick={() => setMode(AuthMode.FORGOT_PASSWORD)}
+                    className="mt-4 text-stone-400 hover:text-stone-600 text-xs"
+                  >
+                    Forgot your password?
+                  </button>
+                )}
+                {mode === AuthMode.FORGOT_PASSWORD && (
+                  <button 
+                    type="button"
+                    onClick={() => setMode(AuthMode.LOGIN)}
+                    className="mt-4 text-stone-400 hover:text-stone-600 text-xs"
+                  >
+                    Back to login
+                  </button>
+                )}
+              </div>
+
+            </form>
+          </div>
         </div>
       </div>
 
