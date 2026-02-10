@@ -1,9 +1,18 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Always use process.env.API_KEY directly as per guidelines.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// 在 Vite 前端项目中，我们使用 import.meta.env.VITE_GOOGLE_API_KEY
+// 而不是 process.env.API_KEY (后者通常用于 Node.js 后端)
+const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || '';
+
+// 只有当 apiKey 存在时才初始化
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const getHikingRecommendation = async (userQuery: string, location: string = 'Hong Kong') => {
+  if (!ai) {
+    console.warn("Gemini API Key missing");
+    return "AI features are currently unavailable. Please check your API key configuration.";
+  }
+
   try {
     const model = 'gemini-3-flash-preview';
     const prompt = `
@@ -28,6 +37,6 @@ export const getHikingRecommendation = async (userQuery: string, location: strin
     return response.text || "Sorry, I couldn't find a trail for you right now.";
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return "I'm having trouble connecting to the hiking database (AI) right now. Please check your API key.";
+    return "I'm having trouble connecting to the hiking database (AI) right now. Please check your connection.";
   }
 };
